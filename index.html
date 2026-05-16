@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>PDF Combiner</title>
+
+<!-- pdf-lib: Mergen | PDF.js: Thumbnails -->
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<style>
+:root {
+  --primary:      #e94560;
+  --primary-dark: #c73652;
+  --primary-light:#ff6b87;
+  --bg:      #0f0f1a;
+  --surface: #1a1a2e;
+  --surface2:#22223b;
+  --surface3:#2d2d44;
+  --border:  #3a3a5c;
+  --text:    #e8e8f0;
+  --muted:   #8888aa;
+  --success: #4ade80;
+  --danger:  #f87171;
+  --shadow:  0 4px 24px rgba(0,0,0,.45);
+  --r:       14px;
+  --safe-top: env(safe-area-inset-top,  0px);
+  --safe-bot: env(safe-area-inset-bottom,0px);
+  --safe-l:   env(safe-area-inset-left, 0px);
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+html{ height:100%; }
+body{
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  background:var(--bg); color:var(--text);
+  min-height:100%; display:flex; flex-direction:column;
+  padding-bottom:var(--safe-bot);
+}
+
+/* ── HEADER ──────────────────────────────── */
+header{
+  position:sticky; top:0; z-index:100;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding: var(--safe-top) max(1.5rem,var(--safe-l)) 0;
+  height:calc(60px + var(--safe-top));
+  display:flex; align-items:center; gap:10px;
+  box-shadow:0 2px 12px rgba(0,0,0,.3);
+}
+.logo{
+  width:36px; height:36px; flex-shrink:0;
+  background:linear-gradient(135deg,var(--primary),var(--primary-light));
+  border-radius:10px; display:flex; align-items:center; justify-content:center;
+  font-size:18px; box-shadow:0 2px 8px rgba(233,69,96,.4);
+}
+header h1{
+  font-size:1.2rem; font-weight:700;
+  background:linear-gradient(90deg,#fff,#c8c8e8);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  background-clip:text; white-space:nowrap;
+}
+.header-sub{
+  margin-left:auto; font-size:.72rem; color:var(--muted);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* ── MAIN ────────────────────────────────── */
+main{
+  flex:1; max-width:860px; width:100%; margin:0 auto;
+  padding:1.5rem max(1rem,var(--safe-l));
+  display:flex; flex-direction:column; gap:1.25rem;
+}
+
+/* ── DROP ZONE ───────────────────────────── */
+.drop-zone{
+  border:2px dashed var(--border); border-radius:var(--r);
+  background:var(--surface); padding:2.5rem 1.5rem;
+  text-align:center; cursor:pointer;
+  transition:all .25s ease; position:relative;
+}
+.drop-zone:hover,.drop-zone.over{
+  border-color:var(--primary);
+  background:rgba(233,69,96,.06);
+  box-shadow:0 0 0 4px rgba(233,69,96,.1);
+}
+.drop-zone input[type=file]{
+  position:absolute; inset:0; opacity:0; cursor:pointer;
+  width:100%; height:100%; font-size:16px;
+}
+.drop-icon{ font-size:2.8rem; margin-bottom:.8rem; }
+.drop-zone h2{ font-size:1.1rem; font-weight:600; margin-bottom:.4rem; }
+.drop-zone p{ color:var(--muted); font-size:.88rem; }
+.browse-btn{
+  display:inline-block; margin-top:1rem;
+  padding:.55rem 1.5rem; background:var(--primary);
+  color:#fff; border-radius:8px; font-weight:600;
+  font-size:.9rem; pointer-events:none;
+  box-shadow:0 2px 8px rgba(233,69,96,.35);
+}
+
+/* ── FILE LIST SECTION ───────────────────── */
+.section{ display:none; flex-direction:column; gap:.9rem; }
+.section.show{ display:flex; }
+
+.sec-header{ display:flex; align-items:center; justify-content:space-between; }
+.sec-header h3{
+  font-size:.82rem; font-weight:600; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.08em;
+}
+.btn-danger{
+  background:none; border:none; color:var(--danger);
+  cursor:pointer; font-size:.85rem; font-weight:600;
+  padding:6px 10px; border-radius:8px; touch-action:manipulation;
+}
+
+.file-list{ display:flex; flex-direction:column; gap:8px; }
+
+/* ── FILE CARD ───────────────────────────── */
+.card{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; padding:.75rem .85rem;
+  display:flex; align-items:center; gap:.75rem;
+  transition:border-color .2s, background .2s, opacity .15s, transform .15s;
+  user-select:none; -webkit-user-select:none; touch-action:pan-y;
+  position:relative;
+}
+.card.dragging{ opacity:.3; transform:scale(.97); }
+.card.over{
+  border-color:var(--primary);
+  background:rgba(233,69,96,.08);
+  box-shadow:0 4px 16px rgba(233,69,96,.2);
+}
+
+.handle{
+  color:var(--muted); font-size:1.2rem; flex-shrink:0;
+  cursor:grab; touch-action:none; padding:2px 4px;
+  display:flex; align-items:center;
+}
+.num{
+  width:24px; height:24px; flex-shrink:0;
+  background:var(--surface3); border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:.7rem; font-weight:700; color:var(--muted);
+}
+.thumb{
+  width:42px; height:54px; flex-shrink:0;
+  border-radius:6px; overflow:hidden;
+  background:var(--surface3); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 2px 6px rgba(0,0,0,.3);
+}
+.thumb canvas{ width:100%; height:100%; object-fit:cover; display:block; }
+.thumb-ph{
+  font-size:.55rem; font-weight:800; color:#fff; letter-spacing:.05em;
+  background:linear-gradient(135deg,#e94560,#c73652);
+  width:100%; height:100%;
+  display:flex; align-items:center; justify-content:center;
+}
+.info{ flex:1; min-width:0; }
+.fname{
+  font-size:.88rem; font-weight:600; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  margin-bottom:3px;
+}
+.meta{
+  display:flex; gap:.7rem; flex-wrap:wrap;
+  font-size:.73rem; color:var(--muted);
+}
+.btn-rm{
+  background:none; border:none; color:var(--muted);
+  cursor:pointer; min-width:38px; min-height:38px;
+  border-radius:8px; font-size:1rem;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .15s, color .15s;
+  flex-shrink:0; touch-action:manipulation;
+}
+.btn-rm:active{ background:rgba(248,113,113,.15); color:var(--danger); }
+
+/* ── TOUCH GHOST ─────────────────────────── */
+#ghost{
+  position:fixed; pointer-events:none; z-index:9000;
+  opacity:.88; transform:scale(1.03) rotate(1.5deg);
+  box-shadow:0 8px 32px rgba(0,0,0,.55);
+  border-radius:12px; display:none;
+  background:var(--surface2); border:1px solid var(--primary);
+  padding:.75rem .85rem;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  color:var(--text); font-size:.88rem; font-weight:600;
+  white-space:nowrap; overflow:hidden;
+}
+
+/* ── ADD MORE ────────────────────────────── */
+.add-more{
+  border:1px dashed var(--border); border-radius:10px;
+  background:var(--surface); padding:.75rem;
+  display:flex; align-items:center; justify-content:center;
+  gap:8px; cursor:pointer; color:var(--muted);
+  font-size:.88rem; font-weight:500;
+  transition:all .2s; position:relative; min-height:48px;
+}
+.add-more input[type=file]{
+  position:absolute; inset:0; opacity:0; cursor:pointer;
+  width:100%; height:100%; font-size:16px;
+}
+.add-more:active{ border-color:var(--primary); color:var(--primary); }
+
+/* ── SUMMARY ─────────────────────────────── */
+.summary{
+  display:flex; gap:1rem; flex-wrap:wrap;
+  padding:.75rem 1rem; background:var(--surface2);
+  border-radius:10px; font-size:.82rem; color:var(--muted);
+}
+.summary .v{ font-weight:700; color:var(--text); }
+
+/* ── MERGE PANEL ─────────────────────────── */
+.merge-panel{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r); padding:1.25rem;
+  display:flex; flex-direction:column; gap:.9rem;
+}
+.merge-row{ display:flex; gap:.85rem; align-items:flex-end; }
+.ig{ flex:1; display:flex; flex-direction:column; gap:5px; }
+.ig label{
+  font-size:.75rem; font-weight:600; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.06em;
+}
+.ig input{
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:8px; color:var(--text);
+  font-size:16px; padding:.6rem .85rem;
+  outline:none; width:100%; font-family:inherit;
+  transition:border-color .2s;
+}
+.ig input:focus{ border-color:var(--primary); }
+.ig input::placeholder{ color:var(--muted); }
+
+.btn-merge{
+  padding:.7rem 1.5rem;
+  background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+  color:#fff; border:none; border-radius:10px;
+  font-size:.95rem; font-weight:700; cursor:pointer;
+  box-shadow:0 4px 16px rgba(233,69,96,.35);
+  white-space:nowrap; display:flex; align-items:center; gap:8px;
+  touch-action:manipulation; transition:opacity .2s, transform .1s;
+}
+.btn-merge:active:not(:disabled){ transform:scale(.97); }
+.btn-merge:disabled{ opacity:.5; cursor:not-allowed; }
+
+/* ── PROGRESS ────────────────────────────── */
+.prog-wrap{
+  height:4px; background:var(--surface3);
+  border-radius:99px; overflow:hidden; display:none;
+}
+.prog-wrap.show{ display:block; }
+.prog-bar{
+  height:100%;
+  background:linear-gradient(90deg,var(--primary),var(--primary-light));
+  border-radius:99px; transition:width .35s ease; width:0%;
+}
+
+/* ── DOWNLOAD CARD ───────────────────────── */
+.dl-card{
+  display:none; border-radius:12px; padding:1rem 1.25rem;
+  align-items:center; gap:.85rem; flex-wrap:wrap;
+  background:linear-gradient(135deg,rgba(74,222,128,.09),rgba(74,222,128,.04));
+  border:1px solid rgba(74,222,128,.32);
+}
+.dl-card.show{ display:flex; }
+.dl-card .ico{ font-size:1.9rem; flex-shrink:0; }
+.dl-info{ flex:1; min-width:100px; }
+.dl-info strong{ display:block; font-size:.9rem; color:var(--success); margin-bottom:2px; }
+.dl-info span{ font-size:.78rem; color:var(--muted); }
+.btn-dl{
+  padding:.6rem 1.3rem; background:var(--success);
+  color:#0f0f1a; border:none; border-radius:8px;
+  font-size:.9rem; font-weight:700; cursor:pointer;
+  text-decoration:none; white-space:nowrap; touch-action:manipulation;
+}
+
+/* ── SPINNER ─────────────────────────────── */
+.spin{
+  width:16px; height:16px; flex-shrink:0;
+  border:2px solid rgba(255,255,255,.3); border-top-color:#fff;
+  border-radius:50%; animation:rot .7s linear infinite; display:none;
+}
+.spin.show{ display:block; }
+@keyframes rot{ to{ transform:rotate(360deg); } }
+
+/* ── TOAST ───────────────────────────────── */
+#toasts{
+  position:fixed; z-index:9999; pointer-events:none;
+  bottom:max(1.5rem,var(--safe-bot));
+  right:1rem; left:1rem;
+  display:flex; flex-direction:column; align-items:flex-end; gap:8px;
+}
+.toast{
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:12px; padding:.75rem 1rem;
+  display:flex; align-items:center; gap:8px;
+  font-size:.88rem; box-shadow:var(--shadow);
+  animation:tin .3s ease; max-width:340px; pointer-events:auto;
+}
+.toast.ok{ border-color:var(--success); }
+.toast.err{ border-color:var(--danger); }
+@keyframes tin { from{ opacity:0; transform:translateY(12px); } to{ opacity:1; transform:none; } }
+@keyframes tout{ from{ opacity:1; } to{ opacity:0; transform:translateY(8px); } }
+
+.hint{ text-align:center; color:var(--muted); font-size:.8rem; padding:.25rem; }
+
+/* ── MOBILE ──────────────────────────────── */
+@media(max-width:540px){
+  .header-sub{ display:none; }
+  main{ padding:1rem .85rem; gap:1rem; }
+  .drop-zone{ padding:1.8rem 1rem; }
+  .drop-icon{ font-size:2.2rem; margin-bottom:.6rem; }
+  .drop-zone h2{ font-size:1rem; }
+  .drop-zone p{ display:none; }
+  .merge-row{ flex-direction:column; }
+  .btn-merge{ width:100%; justify-content:center; padding:.85rem; }
+  .dl-card{ flex-direction:column; text-align:center; }
+  .btn-dl{ width:100%; text-align:center; padding:.75rem; }
+  #toasts{ align-items:stretch; }
+  .toast{ max-width:100%; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">📄</div>
+  <h1>PDF Combiner</h1>
+  <span class="header-sub">100 % lokal · keine Cloud · kein Server</span>
+</header>
+
+<main>
+
+  <!-- Drop zone -->
+  <div class="drop-zone" id="dz">
+    <input type="file" id="fi" multiple accept=".pdf">
+    <div class="drop-icon">📂</div>
+    <h2>PDFs hier ablegen</h2>
+    <p>oder klicken um Dateien auszuwählen</p>
+    <span class="browse-btn">Dateien auswählen</span>
+  </div>
+
+  <!-- File list section -->
+  <div class="section" id="sec">
+
+    <div class="sec-header">
+      <h3 id="cntLabel">0 Dateien</h3>
+      <button class="btn-danger" onclick="clearAll()">Alle entfernen</button>
+    </div>
+
+    <div class="file-list" id="fl"></div>
+
+    <div class="add-more">
+      <input type="file" id="fi2" multiple accept=".pdf">
+      <span style="font-size:1.1rem">＋</span>
+      <span>Weitere PDFs hinzufügen</span>
+    </div>
+
+    <div class="summary">
+      <span>Dateien: <span class="v" id="sF">0</span></span>
+      <span>Seiten: <span class="v" id="sP">0</span></span>
+      <span>Größe: <span class="v" id="sS">0 KB</span></span>
+    </div>
+
+    <div class="merge-panel">
+      <div class="merge-row">
+        <div class="ig">
+          <label>Ausgabedateiname</label>
+          <input type="text" id="oname" value="zusammengefuegt.pdf"
+                 placeholder="zusammengefuegt.pdf"
+                 autocomplete="off" autocorrect="off" spellcheck="false">
+        </div>
+        <button class="btn-merge" id="mbtn" onclick="doMerge()">
+          <div class="spin" id="mspin"></div>
+          <span id="mtext">🔗 Zusammenfügen</span>
+        </button>
+      </div>
+      <div class="prog-wrap" id="pw"><div class="prog-bar" id="pb"></div></div>
+    </div>
+
+    <div class="dl-card" id="dlcard">
+      <div class="ico">✅</div>
+      <div class="dl-info">
+        <strong>Erfolgreich zusammengefügt!</strong>
+        <span id="dlmeta"></span>
+      </div>
+      <a class="btn-dl" id="dlbtn" href="#">⬇ Herunterladen</a>
+    </div>
+
+  </div>
+
+  <p class="hint">Reihenfolge per Drag &amp; Drop ändern · Alles läuft lokal in deinem Browser</p>
+</main>
+
+<div id="ghost"></div>
+<div id="toasts"></div>
+
+<script>
+// ── PDF.js worker ───────────────────────────────────────────
+// Auf file:// funktionieren Blob-Worker nicht (Browser-Sicherheit).
+// Auf HTTPS (z.B. GitHub Pages) laden wir den Worker per fetch als Blob.
+const workerReady = (async () => {
+  if (location.protocol === 'file:') return false; // kein Worker auf file://
+  try {
+    const resp = await fetch(
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+    );
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const code = await resp.text();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(
+      new Blob([code], { type: 'text/javascript' })
+    );
+    return true;
+  } catch { return false; }
+})();
+
+// ── State ───────────────────────────────────────────────────
+// files: [{name, sizeKb, pages, bytes: Uint8Array, thumbUrl: string}]
+let files = [];
+let dragSrc = null;
+
+// ── Inputs ──────────────────────────────────────────────────
+document.getElementById('fi').addEventListener('change', e => loadFiles(e.target.files));
+document.getElementById('fi2').addEventListener('change', e => loadFiles(e.target.files));
+
+// Desktop drop
+const dz = document.getElementById('dz');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); loadFiles(e.dataTransfer.files); });
+
+// ── Load & process files ────────────────────────────────────
+async function loadFiles(fileList) {
+  const pdfs = Array.from(fileList).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  if (!pdfs.length) { toast('Nur PDF-Dateien werden unterstützt', 'err'); return; }
+
+  setProgress(20);
+  const step = 80 / pdfs.length;
+  let cur = 20;
+
+  for (const f of pdfs) {
+    try {
+      const bytes    = new Uint8Array(await f.arrayBuffer());
+      const pages    = await getPageCount(bytes);
+      const thumbUrl = await renderThumb(bytes);
+      files.push({ name: f.name, sizeKb: f.size / 1024, pages, bytes, thumbUrl });
+    } catch {
+      toast(`Fehler beim Lesen: ${f.name}`, 'err');
+    }
+    cur += step;
+    setProgress(cur);
+  }
+
+  setProgress(100);
+  setTimeout(clearProgress, 400);
+  render();
+  toast(`${pdfs.length} Datei${pdfs.length > 1 ? 'en' : ''} hinzugefügt`, 'ok');
+}
+
+async function getPageCount(bytes) {
+  try {
+    const doc = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+    return doc.getPageCount();
+  } catch { return 0; }
+}
+
+async function renderThumb(bytes) {
+  const ok = await workerReady;
+  if (!ok) return null;
+  try {
+    const pdf    = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+    const page   = await pdf.getPage(1);
+    const vp     = page.getViewport({ scale: 0.4 });
+    const canvas = document.createElement('canvas');
+    canvas.width  = vp.width;
+    canvas.height = vp.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    return canvas.toDataURL('image/jpeg', 0.8);
+  } catch { return null; }
+}
+
+// ── Render list ─────────────────────────────────────────────
+function render() {
+  const sec = document.getElementById('sec');
+  const fl  = document.getElementById('fl');
+
+  if (!files.length) { sec.classList.remove('show'); return; }
+  sec.classList.add('show');
+
+  document.getElementById('cntLabel').textContent =
+    `${files.length} Datei${files.length !== 1 ? 'en' : ''}`;
+
+  const totP = files.reduce((a, f) => a + f.pages, 0);
+  const totS = files.reduce((a, f) => a + f.sizeKb, 0);
+  document.getElementById('sF').textContent = files.length;
+  document.getElementById('sP').textContent = totP;
+  document.getElementById('sS').textContent = fmt(totS);
+
+  fl.innerHTML = '';
+
+  files.forEach((f, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.i = i;
+
+    const thumbHtml = f.thumbUrl
+      ? `<img src="${f.thumbUrl}" style="width:100%;height:100%;object-fit:cover;object-position:top;border-radius:5px;">`
+      : `<div class="thumb-ph">PDF</div>`;
+
+    card.innerHTML = `
+      <div class="num">${i + 1}</div>
+      <div class="handle" data-h>⠿</div>
+      <div class="thumb">${thumbHtml}</div>
+      <div class="info">
+        <div class="fname" title="${esc(f.name)}">${esc(f.name)}</div>
+        <div class="meta">
+          <span>📄 ${f.pages} Seite${f.pages !== 1 ? 'n' : ''}</span>
+          <span>💾 ${fmt(f.sizeKb)}</span>
+        </div>
+      </div>
+      <button class="btn-rm" data-rm="${i}" aria-label="Entfernen">✕</button>
+    `;
+
+    // Remove button
+    card.querySelector('[data-rm]').addEventListener('click', () => {
+      files.splice(i, 1);
+      hideDl();
+      render();
+    });
+
+    // Desktop drag
+    card.draggable = true;
+    card.addEventListener('dragstart', e => { dragSrc = i; card.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    card.addEventListener('dragend',   () => { card.classList.remove('dragging'); clearOver(); });
+    card.addEventListener('dragover',  e => { e.preventDefault(); clearOver(); card.classList.add('over'); });
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragSrc !== null && dragSrc !== i) move(dragSrc, i);
+    });
+
+    // Touch drag (handle only)
+    card.querySelector('[data-h]').addEventListener('touchstart', e => touchStart(e, i), { passive: false });
+
+    fl.appendChild(card);
+  });
+}
+
+function clearOver() {
+  document.querySelectorAll('.card.over').forEach(c => c.classList.remove('over'));
+}
+
+function move(from, to) {
+  const [item] = files.splice(from, 1);
+  files.splice(to, 0, item);
+  dragSrc = null;
+  hideDl();
+  render();
+}
+
+// ── Touch drag ──────────────────────────────────────────────
+let tSrc = null, tOffX = 0, tOffY = 0;
+
+function touchStart(e, idx) {
+  e.preventDefault();
+  const t    = e.touches[0];
+  const card = document.querySelectorAll('.card')[idx];
+  const r    = card.getBoundingClientRect();
+
+  tSrc = idx;
+  tOffX = t.clientX - r.left;
+  tOffY = t.clientY - r.top;
+
+  const g = document.getElementById('ghost');
+  g.style.cssText = `display:block;width:${r.width}px;left:${r.left}px;top:${r.top}px;`;
+  g.textContent = card.querySelector('.fname').textContent;
+  card.classList.add('dragging');
+
+  document.addEventListener('touchmove', touchMove, { passive: false });
+  document.addEventListener('touchend',  touchEnd,  { passive: false });
+}
+
+function touchMove(e) {
+  e.preventDefault();
+  const t = e.touches[0];
+  const g = document.getElementById('ghost');
+  g.style.left = (t.clientX - tOffX) + 'px';
+  g.style.top  = (t.clientY - tOffY) + 'px';
+
+  g.style.display = 'none';
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  g.style.display = 'block';
+  clearOver();
+  const tc = el && el.closest('.card');
+  if (tc) {
+    const ti = +tc.dataset.i;
+    if (!isNaN(ti) && ti !== tSrc) tc.classList.add('over');
+  }
+}
+
+function touchEnd(e) {
+  e.preventDefault();
+  document.removeEventListener('touchmove', touchMove);
+  document.removeEventListener('touchend',  touchEnd);
+
+  const g = document.getElementById('ghost');
+  g.style.display = 'none';
+  clearOver();
+
+  const t  = e.changedTouches[0];
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  const tc = el && el.closest('.card');
+  if (tc) {
+    const ti = +tc.dataset.i;
+    if (!isNaN(ti) && ti !== tSrc) { move(tSrc, ti); return; }
+  }
+  render();
+  tSrc = null;
+}
+
+// ── Clear all ───────────────────────────────────────────────
+function clearAll() {
+  if (!confirm('Alle Dateien entfernen?')) return;
+  files = [];
+  hideDl();
+  render();
+}
+
+// ── Merge ───────────────────────────────────────────────────
+async function doMerge() {
+  if (files.length < 2) { toast('Mindestens 2 PDFs erforderlich', 'err'); return; }
+
+  const btn   = document.getElementById('mbtn');
+  const spin  = document.getElementById('mspin');
+  const mtext = document.getElementById('mtext');
+  let outName = document.getElementById('oname').value.trim() || 'zusammengefuegt';
+  if (!outName.toLowerCase().endsWith('.pdf')) outName += '.pdf';
+
+  btn.disabled = true;
+  spin.classList.add('show');
+  mtext.textContent = 'Wird zusammengefügt…';
+  setProgress(10);
+  hideDl();
+
+  try {
+    const merged  = await PDFLib.PDFDocument.create();
+    const step    = 80 / files.length;
+    let   cur     = 10;
+
+    for (const f of files) {
+      const src   = await PDFLib.PDFDocument.load(f.bytes, { ignoreEncryption: true });
+      const idxs  = src.getPageIndices();
+      const pages = await merged.copyPages(src, idxs);
+      pages.forEach(p => merged.addPage(p));
+      cur += step;
+      setProgress(cur);
+    }
+
+    setProgress(95);
+    const pdfBytes = await merged.save();
+    setProgress(100);
+    setTimeout(clearProgress, 350);
+
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url  = URL.createObjectURL(blob);
+
+    const dlbtn = document.getElementById('dlbtn');
+    dlbtn.href     = url;
+    dlbtn.download = outName;
+
+    const totP = files.reduce((a, f) => a + f.pages, 0);
+    document.getElementById('dlmeta').textContent = `${files.length} Dateien · ${totP} Seiten`;
+    document.getElementById('dlcard').classList.add('show');
+    document.getElementById('dlcard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    toast('Fertig! Bereit zum Download.', 'ok');
+  } catch (err) {
+    clearProgress();
+    toast('Fehler beim Zusammenfügen: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    spin.classList.remove('show');
+    mtext.textContent = '🔗 Zusammenfügen';
+  }
+}
+
+function hideDl() { document.getElementById('dlcard').classList.remove('show'); }
+
+// ── Progress ────────────────────────────────────────────────
+function setProgress(pct) {
+  document.getElementById('pw').classList.add('show');
+  document.getElementById('pb').style.width = pct + '%';
+}
+function clearProgress() {
+  document.getElementById('pw').classList.remove('show');
+  document.getElementById('pb').style.width = '0%';
+}
+
+// ── Toast ────────────────────────────────────────────────────
+function toast(msg, type = '') {
+  const icons = { ok: '✅', err: '❌' };
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'tout .3s ease forwards';
+    setTimeout(() => el.remove(), 300);
+  }, 3200);
+}
+
+// ── Utils ────────────────────────────────────────────────────
+function fmt(kb) {
+  return kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb.toFixed(0) + ' KB';
+}
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
